@@ -41,7 +41,7 @@ The system demonstrates how AI can be used in real-world design automation and p
 ## System Architecture
 <!--Embed the system architecture diagram as shown below-->
 
-![System Architecture](https://github.com/Narasimhan05/ai-floorplan-generator/assets/placeholder/system_architecture.png)
+<img width="995" height="339" alt="image" src="https://github.com/user-attachments/assets/0d383cef-6d5f-4f37-9b0a-16032b748d0e" />
 
 ---
 
@@ -50,11 +50,11 @@ The system demonstrates how AI can be used in real-world design automation and p
 <!--Embed the Output picture at respective places as shown below-->
 #### Output1 - User Input Interface
 
-![User Input Interface](https://github.com/Narasimhan05/ai-floorplan-generator/assets/placeholder/output1.png)
+<img width="1919" height="909" alt="Screenshot 2025-12-25 232642" src="https://github.com/user-attachments/assets/272ab5a5-e71a-4068-bb22-b30946dccf98" />
 
 #### Output2 - Generated Floorplan
 
-![Generated Floorplan](https://github.com/Narasimhan05/ai-floorplan-generator/assets/placeholder/output2.png)
+<img width="1367" height="846" alt="Screenshot 2025-12-25 232806" src="https://github.com/user-attachments/assets/5d2613d6-0ae7-4199-9611-01bd3f261d66" />
 
 Generation Accuracy: 95% (based on logical layout correctness)  
 Note: Performance metrics may vary depending on input complexity.
