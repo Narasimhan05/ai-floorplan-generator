@@ -5,259 +5,346 @@ import os
 import json
 import io
 
-# --- 1. Configure Gemini API ---
-api_key = os.environ.get("GEMINI_API_KEY")
-if not api_key:
-    st.error("GEMINI_API_KEY environment variable not set. Please set it before running the app.")
-    st.stop()
-
-genai.configure(api_key=api_key)
-
-# --- AI Core: Generate Floor Plan Data ---
-@st.cache_data
-def get_gemini_model():
-    return genai.GenerativeModel('gemini-1.5-flash')
-
-def generate_floor_plan_data(user_description):
-    model = get_gemini_model()
-    
-    full_prompt = f"""
-    You are an expert architectural designer.
-    Based on the following user request, generate a simple 2D rectangular floor plan.
-    The output must be a single JSON object.
-
-    USER REQUEST: {user_description}
-
-    Include the overall dimensions of the house (length and breadth) and a list of rooms.
-    For each room, provide its name, its type (e.g., 'bedroom', 'living room', 'bathroom', 'kitchen', 'doorway'),
-    and its position (x, y coordinates from top-left, in feet) and size (width, height, in feet).
-    Ensure rooms do not overlap and fit within the overall house dimensions.
-    Include doorways between rooms where logical, representing them as small rectangles.
-    Ensure the layout is functional and aesthetically pleasing for a typical house.
-
-    RESPONSE STRUCTURE EXAMPLE:
-    {{
-      "dimensions": {{"length": 60, "breadth": 20}},
-      "rooms": [
-        {{"name": "Living Room", "type": "living_room", "x": 0, "y": 0, "width": 25, "height": 20}},
-        {{"name": "Kitchen", "type": "kitchen", "x": 25, "y": 0, "width": 15, "height": 20}},
-        {{"name": "Bedroom 1", "type": "bedroom", "x": 0, "y": 20, "width": 20, "height": 10}},
-        {{"name": "Bathroom 1", "type": "bathroom", "x": 20, "y": 20, "width": 10, "height": 10}},
-        {{"name": "Doorway", "type": "door", "x": 24, "y": 0, "width": 2, "height": 1}}
-      ]
-    }}
-    Please ensure the 'dimensions' in the JSON are consistent with the overall area or given dimensions in the user's request.
-    """
-    
-    try:
-        response = model.generate_content(full_prompt)
-        json_string = response.text.strip().lstrip("```json").rstrip("```")
-        floor_plan = json.loads(json_string)
-        if 'dimensions' not in floor_plan or 'rooms' not in floor_plan:
-            raise ValueError("Missing 'dimensions' or 'rooms' in AI response.")
-        return floor_plan
-    except json.JSONDecodeError as e:
-        st.error(f"AI response was not valid JSON: {e}")
-        return None
-    except ValueError as e:
-        st.error(f"AI response error: {e}")
-        return None
-    except Exception as e:
-        st.error(f"An unexpected error occurred: {e}")
-        return None
-
-# --- Rendering Engine: Convert Data to Image ---
-def render_floor_plan(data):
-    scale = 20
-    try:
-        img_width = data['dimensions']['length'] * scale
-        img_height = data['dimensions']['breadth'] * scale
-    except KeyError:
-        return None
-    
-    image = Image.new('RGB', (img_width, img_height), 'white')
-    draw = ImageDraw.Draw(image)
-    try:
-        font_size = max(10, int(scale * 0.7))
-        font = ImageFont.truetype("arial.ttf", font_size)
-    except IOError:
-        font = ImageFont.load_default()
-    draw.rectangle([0, 0, img_width, img_height], outline='black', width=3)
-    room_colors = {
-        'living_room': (255, 200, 200),
-        'kitchen': (200, 255, 200),
-        'bedroom': (200, 200, 255),
-        'bathroom': (255, 255, 200),
-        'door': (100, 50, 0),
-        'hallway': (230, 230, 230),
-        'default': (240, 240, 240)
-    }
-    for item in data.get('rooms', []):
-        try:
-            x, y, width, height = item['x'] * scale, item['y'] * scale, item['width'] * scale, item['height'] * scale
-            color = room_colors.get(item.get('type', 'default'), room_colors['default'])
-            if item.get('type') == 'door':
-                draw.rectangle([x, y, x + width, y + height], fill=color, outline=color)
-            else:
-                draw.rectangle([x, y, x + width, y + height], fill=color, outline='black', width=1)
-            if item.get('name') and item.get('type') != 'door':
-                draw.text((x + 5, y + 5), item['name'], fill='black', font=font)
-        except (KeyError, ValueError) as e:
-            st.warning(f"Skipping malformed room data: {e} in {item}")
-        except Exception as e:
-            st.warning(f"Error drawing item: {e}")
-    img_byte_arr = io.BytesIO()
-    image.save(img_byte_arr, format='PNG')
-    img_byte_arr.seek(0)
-    return img_byte_arr
-
-# --- Streamlit UI ---
-st.set_page_config(layout="wide", page_title="AI Floor Plan Generator")
-
-# Inject custom CSS for a more aesthetic look with a white and red theme
+# ==========================================
+# 1. PAGE CONFIGURATION & VISIBILITY CSS
+# ==========================================
+st.set_page_config(layout="wide", page_title="ArchGenius AI - Floor Plan Generator")
 st.markdown(
     """
     <style>
-    /* General font for the whole app */
-    html, body, [class*="st-"] {
-        font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+    .stApp { background-color: #FFFFFF; }
+    h1, h2, h3 { color: #FF4B4B !important; }
+    
+    /* Metric Visibility Fixes */
+    div[data-testid="stMetricValue"] {
+        color: #006400 !important; 
+        font-weight: 800;
+        font-size: 2.5rem;
+    }
+    div[data-testid="stMetricLabel"] {
+        color: #003366 !important;
+        font-size: 1.1rem;
+        font-weight: 600;
+    }
+    .stCaption {
+        color: #333333 !important;
+        font-style: italic;
     }
     
-    /* Background animation */
-    body {
-        background-color: #F8F8F8; /* Light gray background */
-        overflow-x: hidden;
-    }
-
-    body::before {
-        content: '';
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 200vw;
-        height: 200vh;
-        z-index: -1;
-        background-image:
-            linear-gradient(rgba(255, 75, 75, 0.1) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255, 75, 75, 0.1) 1px, transparent 1px);
-        background-size: 50px 50px;
-        animation: flow 120s linear infinite;
-    }
-
-    @keyframes flow {
-        from {
-            transform: translate(0, 0);
-        }
-        to {
-            transform: translate(calc(50px * -2), calc(50px * -2));
-        }
-    }
-
-    /* Set main app background to white */
-    .stApp {
-        background-color: #FFFFFF;
-    }
-
-    /* Center the title and use a bold red color */
-    h1 {
-        font-size: 3rem;
-        color: #FF4B4B; /* Bold red color */
-        text-align: left;
-        letter-spacing: -1px;
-        margin-bottom: 0.5rem;
-    }
-    
-    /* Style the main header for better alignment */
-    .header-container {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 1rem;
-        padding: 1rem 0;
-    }
-    
-    /* Add a subtle shadow and red border to the input container */
-    .stContainer {
-        background-color: #FFFFFF;
-        border: 1px solid #FF4B4B; /* Red border */
-        border-radius: 10px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        padding: 20px;
-        margin-bottom: 20px;
-    }
-
-    /* Style the main button */
     .stButton>button {
-        background-color: #FF4B4B; /* Red button */
+        background-color: #FF4B4B;
         color: white;
         font-weight: bold;
-        border: none;
         border-radius: 8px;
-        padding: 10px 24px;
-        transition: transform 0.2s ease-in-out;
+        height: 3em;
+        width: 100%;
     }
-    .stButton>button:hover {
-        transform: scale(1.02);
-    }
-    
-    /* Adjust text area label */
-    .stTextArea > label {
-        font-weight: bold;
-        color: #262730; /* Dark text for contrast */
-    }
-    /* Adjust subheader text color */
-    h2, h3, h4, h5, h6 {
-        color: #262730;
-    }
-
     </style>
-    """, unsafe_allow_html=True
+    """, 
+    unsafe_allow_html=True
 )
 
-# Use columns for a better header layout with the logo
-header_col1, header_col2 = st.columns([1, 4])
-with header_col1:
-    st.image("ai_floorplan_logo.png", width=120) 
-with header_col2:
-    st.markdown("<h1 style='text-align: left; color: #FF4B4B; margin-top: 0;'>AI-Powered Floor Plan Generator</h1>", unsafe_allow_html=True)
-    st.markdown("<h4 style='text-align: left; margin-top: -10px;'>Your personal architectural assistant powered by Gemini.</h4>", unsafe_allow_html=True)
+# ==========================================
+# 2. FEASIBILITY ENGINE (Indian Context)
+# ==========================================
+def calculate_cost_and_compliance(data):
+    results = {
+        'cost_estimate': 0,
+        'compliance_warnings': [],
+        'total_area_sqft': 0,
+        'bedroom_count': 0
+    }
+    
+    EXTERIOR_WALL_COST = 3000  # ₹ per running foot
+    INTERIOR_WALL_COST = 1200  # ₹ per running foot
+    FLOORING_COST = 1500       # ₹ per sq ft
+    
+    total_ext_len = 0
+    total_int_len = 0
+    total_area = 0
 
-st.markdown("---")
+    try:
+        L = data['dimensions']['length']
+        B = data['dimensions']['breadth']
+        total_ext_len = 2 * (L + B)
+        total_area = L * B
+        results['total_area_sqft'] = total_area
+    except KeyError:
+        results['compliance_warnings'].append("CRITICAL: Missing dimension data.")
+        return results
 
-input_container = st.container(border=True)
-with input_container:
-    st.subheader("Design Your Home ✨")
-    user_description = st.text_area(
-        "Describe your dream house here:",
-        "Generate a 1200 sq ft house, 60 feet long and 20 feet wide. It should have 3 bedrooms, 2 bathrooms, an open-concept living room, and a kitchen. Make the master bedroom have an ensuite bathroom.",
-        height=150
+    for item in data.get('rooms', []):
+        try:
+            w = item.get('width', 0)
+            h = item.get('height', 0)
+            
+            if item.get('type') not in ['door', 'window']:
+                total_int_len += (2 * (w + h))
+
+            if item.get('type') == 'bedroom':
+                results['bedroom_count'] += 1
+                if w < 7 or h < 7:
+                    results['compliance_warnings'].append(
+                        f"⚠️ **Warning:** '{item['name']}' is very narrow (< 7ft)."
+                    )
+        except Exception:
+            pass
+
+    est_cost = (total_ext_len * EXTERIOR_WALL_COST) + \
+               ((total_int_len / 2) * INTERIOR_WALL_COST) + \
+               (total_area * FLOORING_COST)
+               
+    results['cost_estimate'] = int(est_cost)
+    return results
+
+# ==========================================
+# 3. RENDERING ENGINE (With Furniture)
+# ==========================================
+def render_floor_plan(data):
+    """
+    Draws the JSON data with Walls, Doors, and Furniture.
+    """
+    scale = 30  # Pixels per foot
+    wall_thickness = 0.8 * scale 
+    buffer = int(wall_thickness * 2)
+    
+    try:
+        L = data['dimensions']['length']
+        B = data['dimensions']['breadth']
+        w_px = int(L * scale + (buffer * 2))
+        h_px = int(B * scale + (buffer * 2))
+    except:
+        return None
+
+    img = Image.new('RGB', (w_px, h_px), 'white')
+    draw = ImageDraw.Draw(img)
+    
+    try:
+        font = ImageFont.truetype("arial.ttf", 12)
+        font_bold = ImageFont.truetype("arialbd.ttf", 14)
+    except:
+        font = ImageFont.load_default()
+        font_bold = ImageFont.load_default()
+
+    # 1. Draw Structure (Black Background for Walls)
+    draw.rectangle(
+        [buffer, buffer, w_px - buffer, h_px - buffer], 
+        outline='black', width=int(wall_thickness)
     )
 
-generate_button = st.button("Generate Floor Plan", use_container_width=True)
+    colors = {
+        'living_room': '#F0F8FF', 'kitchen': '#FFFACD', 'bedroom': '#FFF0F5',
+        'bathroom': '#E0FFFF', 'corridor': '#F5F5F5', 'default': '#FFFFFF'
+    }
 
-if generate_button:
-    if user_description:
-        with st.spinner('Thinking and drawing your floor plan...'):
-            floor_plan_data = generate_floor_plan_data(user_description)
+    # 2. Draw Rooms (Floor)
+    rooms = [r for r in data.get('rooms', []) if r.get('type') not in ['door', 'window']]
+    
+    for r in rooms:
+        try:
+            x1 = int(r['x'] * scale) + buffer
+            y1 = int(r['y'] * scale) + buffer
+            x2 = x1 + int(r['width'] * scale)
+            y2 = y1 + int(r['height'] * scale)
             
-            if floor_plan_data:
-                image_bytes = render_floor_plan(floor_plan_data)
-                
-                if image_bytes:
-                    st.success("Floor plan successfully generated! 🎉")
-                    st.image(image_bytes, caption="Your Generated Floor Plan", use_column_width=True)
-                    st.download_button(
-                        label="Download Floor Plan (PNG)",
-                        data=image_bytes,
-                        file_name="floor_plan.png",
-                        mime="image/png"
-                    )
-                else:
-                    st.error("Failed to render the floor plan image.")
-            else:
-                st.error("Could not generate floor plan data. Please try a different prompt or check the AI's response.")
-    else:
-        st.warning("Please enter a description for your house plan.")
+            fill_c = colors.get(r.get('type', 'default'), colors['default'])
+            draw.rectangle([x1, y1, x2, y2], fill=fill_c, outline='black', width=2)
+            
+            # Draw Labels
+            if 'name' in r:
+                draw.text((x1 + 5, y1 + 5), r['name'], fill='black', font=font_bold)
+                draw.text((x1 + 5, y1 + 20), f"{r['width']}x{r['height']}", fill='#555', font=font)
+        except:
+            pass
 
-st.markdown("---")
-st.caption("Powered by Google Gemini and Streamlit")
+    # 3. Draw Furniture (NEW!)
+    # Simple symbolic drawing logic
+    for f in data.get('furniture', []):
+        try:
+            fx = int(f['x'] * scale) + buffer
+            fy = int(f['y'] * scale) + buffer
+            fw = int(f['width'] * scale)
+            fh = int(f['height'] * scale)
+            ftype = f.get('type', 'default')
+            
+            # Base Furniture Shape (Grey/Brown)
+            draw.rectangle([fx, fy, fx+fw, fy+fh], outline='#555555', fill='#D3D3D3', width=1)
+            
+            # Detail by type
+            if ftype == 'bed':
+                # Draw "Pillow" line
+                pillow_h = int(fh * 0.2)
+                draw.rectangle([fx, fy, fx+fw, fy+pillow_h], fill='white', outline='#555')
+            elif ftype == 'sofa':
+                # Draw "Backrest"
+                back_h = int(fh * 0.25)
+                draw.rectangle([fx, fy, fx+fw, fy+back_h], fill='#A9A9A9', outline=None)
+            elif ftype == 'table':
+                # Draw "Center"
+                draw.rectangle([fx+5, fy+5, fx+fw-5, fy+fh-5], outline='#555', width=1)
+            elif ftype == 'toilet':
+                # Oval hint (circle)
+                draw.ellipse([fx, fy, fx+fw, fy+fh], outline='black', width=1)
+            
+            # Label Furniture (Small text)
+            if fw > 20 and fh > 10:
+                draw.text((fx + 2, fy + fh/2 - 5), ftype, fill='#333', font=font)
+
+        except Exception as e:
+            pass
+
+    # 4. Draw Doors & Windows (Top Layer - Cuts Walls)
+    features = [r for r in data.get('rooms', []) if r.get('type') in ['door', 'window']]
+    for f in features:
+        try:
+            x1 = int(f['x'] * scale) + buffer
+            y1 = int(f['y'] * scale) + buffer
+            x2 = x1 + int(f['width'] * scale)
+            y2 = y1 + int(f['height'] * scale)
+            
+            if f['type'] == 'door':
+                draw.rectangle([x1, y1, x2, y2], fill='white', outline=None) # Cut wall
+                draw.rectangle([x1, y1, x2, y2], fill=None, outline='brown', width=2) # Frame
+                # Draw swing arc (simplified as a line for now)
+                draw.line([x1, y1, x2, y2], fill='brown', width=3)
+            elif f['type'] == 'window':
+                draw.rectangle([x1, y1, x2, y2], fill='#E0FFFF', outline='black', width=1)
+        except:
+            pass
+
+    buf = io.BytesIO()
+    img.save(buf, format='PNG')
+    buf.seek(0)
+    return buf
+
+# ==========================================
+# 4. AI REASONING ENGINE (The Brain)
+# ==========================================
+with st.sidebar:
+    st.header("Configuration")
+    env_key = os.environ.get("GEMINI_API_KEY")
+    api_key_input = st.text_input("Gemini API Key", value=env_key if env_key else "", type="password")
+    if api_key_input:
+        genai.configure(api_key=api_key_input)
+    st.info("Get your key from Google AI Studio.")
+
+def get_floor_plan_from_ai(prompt):
+    if not api_key_input:
+        st.error("Please enter your API Key in the sidebar.")
+        return None
+
+    model = genai.GenerativeModel('gemini-2.5-flash')
+    generation_config = genai.GenerationConfig(
+        response_mime_type="application/json",
+        temperature=1.0,  # Lower temperature is faster/more stable
+        max_output_tokens=1500 # Limit output to prevent "rambling"
+    )
+    
+    # --- PROMPT WITH FURNITURE INSTRUCTIONS ---
+    system_instruction = """
+    You are an expert architect. Generate a JSON blueprint for a 2D floor plan.
+    
+    MANDATORY RULES:
+
+    1. DIMENSIONS: Use EXACT total dimensions requested (e.g., 60x20).
+
+    2. TOTAL FILL: Sum of rooms MUST fill the boundary. No empty voids.
+
+    3. LOGIC: 
+       - Long/Narrow house? Add a 'Corridor' (4ft wide) to connect rooms.
+       - Missing Bathroom? Add one automatically.
+       - Missing Doors? Add doors to connect rooms to corridors/living areas.
+
+    4. DATA STRUCTURE:
+       - 'x' and 'y' are coordinates in feet from top-left (0,0).
+       - Ensure rooms do not overlap.
+
+    5. FURNITURE (NEW!):
+       - Inside the 'furniture' list, add basic items for each room.
+       - Living Room: 'sofa', 'table'
+       - Bedroom: 'bed'
+       - Kitchen: 'table' (island) or 'sink'
+       - Bathroom: 'toilet', 'sink'
+       - Ensure furniture coordinates are INSIDE their respective rooms.
+    
+    JSON FORMAT:
+    {
+      "dimensions": {"length": 60, "breadth": 20},
+      "rooms": [
+        {"name": "Living", "type": "living_room", "x": 0, "y": 0, "width": 20, "height": 20},
+        {"name": "Corridor", "type": "corridor", "x": 20, "y": 0, "width": 40, "height": 4},
+        {"name": "Bedroom", "type": "bedroom", "x": 20, "y": 4, "width": 15, "height": 16},
+        {"name": "Door", "type": "door", "x": 20, "y": 10, "width": 0.5, "height": 3}
+      ],
+      "furniture": [
+        {"type": "sofa", "x": 2, "y": 2, "width": 6, "height": 3},
+        {"type": "bed", "x": 25, "y": 5, "width": 6, "height": 7},
+        {"type": "toilet", "x": 55, "y": 2, "width": 2, "height": 2}
+      ]
+    }
+
+    6. DOOR PLACEMENT RULE: 
+   - A door MUST overlap a wall exactly. 
+   - For a horizontal wall: set height to 0.8 and width to 3. 
+   - For a vertical wall: set width to 0.8 and height to 3.
+   - The 'x' and 'y' of the door MUST be exactly the same as the boundary of the room it belongs to.
+    """
+    
+    try:
+        response = model.generate_content(system_instruction + "\nUser Request: " + prompt)
+        clean_text = response.text.replace("```json", "").replace("```", "").strip()
+        return json.loads(clean_text)
+    except Exception as e:
+        st.error(f"AI Generation Error: {e}")
+        return None
+
+# ==========================================
+# 5. MAIN APP UI
+# ==========================================
+
+st.title("🏠 ArchGenius AI")
+st.subheader("AI-Powered Floor Plan Generator")
+st.markdown("Generates professional floor plans with **Furniture**, **Cost (₹)** and **Compliance Checks**.")
+
+prompt = st.text_area(
+    "Describe your requirement:", 
+    height=100, 
+    value="Design a 30x50 feet office space. It should have a Reception area, one Conference Room, two private Cabins, and a general workspace."
+)
+
+if st.button("Generate Blueprint", type="primary"):
+    
+    with st.spinner("👷‍♂️ AI is drafting the blueprint..."):
+        blueprint_data = get_floor_plan_from_ai(prompt)
+        
+        if blueprint_data:
+            feasibility = calculate_cost_and_compliance(blueprint_data)
+            img_data = render_floor_plan(blueprint_data)
+            
+            st.success("Generation Complete!")
+            
+            tab1, tab2, tab3 = st.tabs(["📐 Visual Plan", "💰 Feasibility Report", "💾 Raw Data"])
+            
+            with tab1:
+                st.image(img_data, use_column_width=True)
+                st.download_button("Download Image", img_data, "plan.png", "image/png")
+            
+            with tab2:
+                st.header("Project Feasibility")
+                st.markdown("---")
+                st.metric(
+                    label=f"Estimated Cost ({feasibility['total_area_sqft']} sq ft)",
+                    value=f"₹{feasibility['cost_estimate']:,}"
+                )
+                st.caption("*Estimate based on Indian construction rates.*")
+                
+                st.markdown("### 📋 Design Checks")
+                if feasibility['compliance_warnings']:
+                    for warn in feasibility['compliance_warnings']:
+                        st.error(warn)
+                else:
+                    st.success("✅ Layout generation successful within provided constraints.")
+            
+            with tab3:
+                st.json(blueprint_data)
+                st.download_button("Download JSON", json.dumps(blueprint_data, indent=2), "blueprint.json")
