@@ -27,25 +27,27 @@ These instructions will get a copy of the project up and running on your local m
 
 ### 📥 Clone the Repository
 
-```bash
+```
 git clone https://github.com/Narasimhan05/ai-floorplan-generator.git
 cd ai-floorplan-generator
+```
 
 ## Create and Activate Virtual Environment
 
-python -m venv venv
+```python -m venv venv
 source venv/bin/activate        # On macOS/Linux
 venv\Scripts\activate           # On Windows
+```
 
 ## Install Dependencies
 
-pip install -r requirements.txt
+```pip install -r requirements.txt```
 
 ## Run the Application
-python app.py
+```python app.py```
 
 ## Open browser and navigate to:
-http://localhost:5000
+```http://localhost:5000```
 
 🧪 Working Principle
 
