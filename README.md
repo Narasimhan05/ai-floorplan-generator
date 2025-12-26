@@ -49,7 +49,7 @@ venv\Scripts\activate           # On Windows
 ## Open browser and navigate to:
 ```http://localhost:5000```
 
-🧪 Working Principle
+## 🧪 Working Principle
 
 User provides basic inputs such as room requirements
 
@@ -59,7 +59,7 @@ A floorplan structure is generated automatically
 
 Output is displayed through a web interface
 
-📊 Advantages
+## 📊 Advantages
 
 Reduces manual design effort
 
@@ -69,7 +69,7 @@ Easy to use
 
 Demonstrates AI practical application
 
-⚠️ Limitations
+## ⚠️ Limitations
 
 Limited customization
 
@@ -77,7 +77,7 @@ Basic layout logic
 
 Not suitable for complex architectural designs
 
-🔮 Future Enhancements
+## 🔮 Future Enhancements
 
 Integration with deep learning models
 
@@ -87,7 +87,7 @@ Support for real-world architectural constraints
 
 Export plans in CAD formats
 
-📌 Applications
+## 📌 Applications
 
 Architectural planning assistance
 
@@ -97,15 +97,15 @@ Educational AI demonstrations
 
 Smart construction systems
 
-✅ Conclusion
+## ✅ Conclusion
 
 The AI Floorplan Generator successfully demonstrates how Artificial Intelligence can be applied to automate design processes. This mini project fulfills academic requirements by integrating AI concepts with real-world problem solving and provides a foundation for future advanced implementations.
 
-📝 License
+## 📝 License
 
 This project is developed strictly for academic and educational purposes.
 
-📬 Contact
+## 📬 Contact
 
 Created by Narasimhan05 – feel free to reach out for questions or suggestions.
 Mail - narasiseenu2005@gmail.com
